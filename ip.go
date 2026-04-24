@@ -26,16 +26,16 @@ import (
 // CF-Connecting-IP, Fastly-Client-IP, True-Client-IP, X-Cluster-Client-IP.
 // Ambiguous legacy headers: X-Forwarded, Forwarded-For.
 const (
-	XForwardedFor    = "x-forwarded-for"
-	Forwarded        = "forwarded"
-	XRealIP          = "x-real-ip"
-	XClientIP        = "x-client-ip"
-	CFConnectingIP   = "cf-connecting-ip"
-	FastlyClientIP   = "fastly-client-ip"
-	TrueClientIP     = "true-client-ip"
-	XClusterClientIP = "x-cluster-client-ip"
-	XForwarded       = "x-forwarded"
-	ForwardedFor     = "forwarded-for"
+	XForwardedFor    = "x-forwarded-for"     // Used by load balancers such as AWS ELB and by many reverse proxies.
+	Forwarded        = "forwarded"           // Standardized by RFC 7239.
+	XRealIP          = "x-real-ip"           // Common nginx proxy/FastCGI header and a frequent alternative to x-forwarded-for.
+	XClientIP        = "x-client-ip"         // De-facto header used by platforms such as Amazon EC2 and Heroku.
+	CFConnectingIP   = "cf-connecting-ip"    // Cloudflare client IP header. See https://developers.cloudflare.com/fundamentals/reference/http-request-headers/#cf-connecting-ip.
+	FastlyClientIP   = "fastly-client-ip"    // Used by Fastly and by Firebase Hosting when forwarding to Cloud Functions.
+	TrueClientIP     = "true-client-ip"      // Used by Akamai and also supported by Cloudflare.
+	XClusterClientIP = "x-cluster-client-ip" // Seen in Rackspace load balancers and Riverbed Stingray.
+	XForwarded       = "x-forwarded"         // Legacy, ambiguous non-standard header.
+	ForwardedFor     = "forwarded-for"       // Legacy, ambiguous non-standard header.
 )
 
 // ProxyMode controls when proxy headers are trusted.
