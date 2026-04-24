@@ -1,149 +1,147 @@
 package ip_test
 
 import (
-	"net/http"
+	"errors"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/skarm/ip"
 )
 
-func TestWithHeaders(t *testing.T) {
-	tests := []struct {
-		name    string
-		headers []string
-		req     *http.Request
-		want    string
-		wantOK  bool
-	}{
-		{
-			name:    "custom header present",
-			headers: []string{"X-Custom-IP"},
-			req: func() *http.Request {
-				r := httptest.NewRequest("GET", "/", nil)
-				r.Header.Set("X-Custom-IP", "192.0.2.100")
-				r.RemoteAddr = "203.0.113.1:12345"
-				return r
-			}(),
-			want:   "192.0.2.100",
-			wantOK: true,
-		},
-		{
-			name:    "custom header with invalid IP",
-			headers: []string{"X-Custom-IP"},
-			req: func() *http.Request {
-				r := httptest.NewRequest("GET", "/", nil)
-				r.Header.Set("X-Custom-IP", "not-an-ip")
-				r.RemoteAddr = "203.0.113.1:12345"
-				return r
-			}(),
-			want:   "203.0.113.1",
-			wantOK: true,
-		},
-		{
-			name:    "header not present",
-			headers: []string{"X-Does-Not-Exist"},
-			req: func() *http.Request {
-				r := httptest.NewRequest("GET", "/", nil)
-				r.RemoteAddr = "203.0.113.2:4567"
-				return r
-			}(),
-			want:   "203.0.113.2",
-			wantOK: true,
-		},
-		{
-			name:    "empty header list",
-			headers: []string{},
-			req: func() *http.Request {
-				r := httptest.NewRequest("GET", "/", nil)
-				r.RemoteAddr = "203.0.113.3:7890"
-				return r
-			}(),
-			want:   "203.0.113.3",
-			wantOK: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ex := ip.New(ip.WithHeaders(tt.headers...))
-			got, ok := ex.FromRequest(tt.req)
-			if ok != tt.wantOK {
-				t.Errorf("expected ok: %v, got: %v", tt.wantOK, ok)
-			}
-			if got.String() != tt.want {
-				t.Errorf("expected IP: %q, got: %q", tt.want, got.String())
-			}
-		})
+func TestNewRejectsInvalidTrustedProxy(t *testing.T) {
+	_, err := ip.New(ip.WithTrustedProxies("not-a-cidr"))
+	if !errors.Is(err, ip.ErrInvalidTrustedProxy) {
+		t.Fatalf("expected ErrInvalidTrustedProxy, got %v", err)
 	}
 }
 
-func TestWithTrustedProxies(t *testing.T) {
+func TestNewRejectsAllowListWithoutTrustedProxies(t *testing.T) {
+	_, err := ip.New(ip.WithProxyMode(ip.ProxiesAllowedList))
+	if !errors.Is(err, ip.ErrMissingTrustedProxies) {
+		t.Fatalf("expected ErrMissingTrustedProxies, got %v", err)
+	}
+}
+
+func TestProxyModeString(t *testing.T) {
 	tests := []struct {
-		name           string
-		trustedProxies []string
-		remoteAddr     string
-		xForwardedFor  string
-		want           string
-		wantOK         bool
+		mode ip.ProxyMode
+		want string
 	}{
-		{
-			name:           "trusted proxy honors X-Forwarded-For",
-			trustedProxies: []string{"127.0.0.1"},
-			remoteAddr:     "127.0.0.1:1234",
-			xForwardedFor:  "198.51.100.5",
-			want:           "198.51.100.5",
-			wantOK:         true,
-		},
-		{
-			name:           "untrusted proxy ignores X-Forwarded-For",
-			trustedProxies: []string{"10.0.0.0/8"},
-			remoteAddr:     "192.168.1.1:5678",
-			xForwardedFor:  "198.51.100.6",
-			want:           "192.168.1.1",
-			wantOK:         true,
-		},
-		{
-			name:           "trusted proxy with malformed X-Forwarded-For",
-			trustedProxies: []string{"127.0.0.1"},
-			remoteAddr:     "127.0.0.1:4321",
-			xForwardedFor:  "not-an-ip",
-			want:           "127.0.0.1",
-			wantOK:         true,
-		},
-		{
-			name:           "empty trusted proxy list (all trusted)",
-			trustedProxies: []string{},
-			remoteAddr:     "127.0.0.1:8080",
-			xForwardedFor:  "203.0.113.9",
-			want:           "203.0.113.9",
-			wantOK:         true,
-		},
-		{
-			name:           "no X-Forwarded-For present",
-			trustedProxies: []string{"127.0.0.1"},
-			remoteAddr:     "127.0.0.1:8080",
-			xForwardedFor:  "",
-			want:           "127.0.0.1",
-			wantOK:         true,
-		},
+		{mode: ip.ProxiesDenied, want: "ProxiesDenied"},
+		{mode: ip.ProxiesAllowedList, want: "ProxiesAllowedList"},
+		{mode: ip.ProxiesAllowedAll, want: "ProxiesAllowedAll"},
+		{mode: ip.ProxyMode(99), want: "ProxyMode(99)"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ex := ip.New(ip.WithTrustedProxies(tt.trustedProxies...))
-			req := httptest.NewRequest("GET", "/", nil)
-			req.RemoteAddr = tt.remoteAddr
-			if tt.xForwardedFor != "" {
-				req.Header.Set("X-Forwarded-For", tt.xForwardedFor)
-			}
-			got, ok := ex.FromRequest(req)
-			if ok != tt.wantOK {
-				t.Errorf("expected ok: %v, got: %v", tt.wantOK, ok)
-			}
-			if got.String() != tt.want {
-				t.Errorf("expected IP: %q, got: %q", tt.want, got.String())
-			}
-		})
+		if got := tt.mode.String(); got != tt.want {
+			t.Fatalf("mode %d: expected %q, got %q", tt.mode, tt.want, got)
+		}
+	}
+}
+
+func TestWithHeadersRejectsEmptyHeader(t *testing.T) {
+	_, err := ip.New(ip.WithHeaders("X-Real-IP", ""))
+	if !errors.Is(err, ip.ErrInvalidConfig) {
+		t.Fatalf("expected ErrInvalidConfig, got %v", err)
+	}
+}
+
+func TestWithProxyModeRejectsInvalidMode(t *testing.T) {
+	_, err := ip.New(ip.WithProxyMode(ip.ProxyMode(99)))
+	if !errors.Is(err, ip.ErrInvalidConfig) {
+		t.Fatalf("expected ErrInvalidConfig, got %v", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "ProxyMode(99)") {
+		t.Fatalf("expected invalid mode value in error, got %v", err)
+	}
+}
+
+func TestWithProxyModeAllowAll(t *testing.T) {
+	ex, err := ip.New(ip.WithProxyMode(ip.ProxiesAllowedAll))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "203.0.113.1:443"
+	req.Header.Set(ip.XForwardedFor, "198.51.100.10")
+
+	got, err := ex.Extract(req)
+	if err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+	if got.String() != "198.51.100.10" {
+		t.Fatalf("expected IP %q, got %q", "198.51.100.10", got.String())
+	}
+}
+
+func TestWithHeadersClonesInputAndTreatsCustomHeaderAsSingleIP(t *testing.T) {
+	headers := []string{"X-Custom-IP"}
+	ex, err := ip.New(
+		ip.WithHeaders(headers...),
+		ip.WithTrustedProxies("10.0.0.2"),
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	headers[0] = "X-Other-IP"
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.2:443"
+	req.Header.Set("X-Custom-IP", "198.51.100.10")
+
+	got, err := ex.Extract(req)
+	if err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+	if got.String() != "198.51.100.10" {
+		t.Fatalf("expected IP %q, got %q", "198.51.100.10", got.String())
+	}
+}
+
+func TestWithHeadersDedupesLogicalHeaderNames(t *testing.T) {
+	ex, err := ip.New(
+		ip.WithStrict(),
+		ip.WithHeaders(ip.XRealIP, "x-real-ip"),
+		ip.WithTrustedProxies("10.0.0.2"),
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.2:443"
+	req.Header["X-Real-IP"] = []string{"198.51.100.10", "198.51.100.20"}
+
+	_, err = ex.Extract(req)
+	if !errors.Is(err, ip.ErrAmbiguousHeader) {
+		t.Fatalf("expected ErrAmbiguousHeader, got %v", err)
+	}
+}
+
+func TestMust(t *testing.T) {
+	ex := ip.Must(ip.New(ip.WithProxyMode(ip.ProxiesDenied)))
+	if ex == nil {
+		t.Fatal("expected non-nil extractor")
+	}
+}
+
+func TestMustPanicsOnInvalidConfig(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic")
+		}
+	}()
+
+	_ = ip.Must(ip.New(ip.WithTrustedProxies("not-a-cidr")))
+}
+
+func TestMustWithStrictOption(t *testing.T) {
+	ex := ip.Must(ip.New(ip.WithStrict(), ip.WithTrustedProxies("10.0.0.2")))
+	if ex == nil {
+		t.Fatal("expected non-nil extractor")
 	}
 }
