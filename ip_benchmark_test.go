@@ -1,20 +1,68 @@
-package ip
+package ip_test
 
 import (
 	"net/http"
 	"net/netip"
 	"testing"
+
+	"github.com/skarm/ip"
 )
 
 var (
-	benchDefaultExtractor    = Must(New())
-	benchAllowListExtractor  = Must(New(WithTrustedProxies("10.0.0.2", "10.0.0.1")))
-	benchAllowAllExtractor   = Must(New(WithUnsafeTrustAllProxies()))
-	benchStrictListExtractor = Must(New(WithStrict(), WithTrustedProxies("10.0.0.2", "10.0.0.1")))
+	benchDefaultExtractor    = ip.Must(ip.New())
+	benchAllowListExtractor  = ip.Must(ip.New(ip.WithTrustedProxies("10.0.0.2", "10.0.0.1")))
+	benchAllowAllExtractor   = ip.Must(ip.New(ip.WithUnsafeTrustAllProxies()))
+	benchStrictListExtractor = ip.Must(ip.New(ip.WithStrict(), ip.WithTrustedProxies("10.0.0.2", "10.0.0.1")))
 	benchWantDefaultIP       = netip.MustParseAddr("203.0.113.20")
 	benchWantClientIP        = netip.MustParseAddr("198.51.100.24")
 	benchWantForwardedClient = netip.MustParseAddr("2001:db8::10")
+	benchForwardedHeader     = `for="[2001:db8::10]:1234";proto=https;by=10.0.0.2`
+	benchXForwardedForHeader = "198.51.100.24, 10.0.0.1"
 )
+
+func BenchmarkParseProxyHeader(b *testing.B) {
+	b.Run("forwarded_ipv6", func(b *testing.B) {
+		b.ReportAllocs()
+
+		for b.Loop() {
+			got, err := ip.ParseForwarded(benchForwardedHeader)
+			if err != nil {
+				b.Fatalf("ParseForwarded() error = %v", err)
+			}
+			if len(got) != 1 || got[0] != benchWantForwardedClient {
+				b.Fatalf("ParseForwarded() = %v", got)
+			}
+		}
+	})
+
+	b.Run("x_forwarded_for_chain", func(b *testing.B) {
+		b.ReportAllocs()
+
+		for b.Loop() {
+			got, err := ip.ParseXForwardedFor(benchXForwardedForHeader)
+			if err != nil {
+				b.Fatalf("ParseXForwardedFor() error = %v", err)
+			}
+			if len(got) != 2 || got[0] != benchWantClientIP {
+				b.Fatalf("ParseXForwardedFor() = %v", got)
+			}
+		}
+	})
+}
+
+func BenchmarkParseRemoteAddr(b *testing.B) {
+	b.ReportAllocs()
+
+	for b.Loop() {
+		got, err := ip.ParseRemoteAddr("203.0.113.20:443")
+		if err != nil {
+			b.Fatalf("ParseRemoteAddr() error = %v", err)
+		}
+		if got != benchWantDefaultIP {
+			b.Fatalf("ParseRemoteAddr() = %v", got)
+		}
+	}
+}
 
 func BenchmarkExtractorExtract(b *testing.B) {
 	b.Run("http/default_no_proxy_headers", func(b *testing.B) {
@@ -134,7 +182,7 @@ func BenchmarkExtractorExtractFrom(b *testing.B) {
 	})
 }
 
-func benchmarkExtractRequest(b *testing.B, ex *Extractor, req *http.Request, want netip.Addr) {
+func benchmarkExtractRequest(b *testing.B, ex *ip.Extractor, req *http.Request, want netip.Addr) {
 	b.ReportAllocs()
 	for b.Loop() {
 		got, err := ex.Extract(req)
@@ -147,7 +195,7 @@ func benchmarkExtractRequest(b *testing.B, ex *Extractor, req *http.Request, wan
 	}
 }
 
-func benchmarkExtractHeaders(b *testing.B, ex *Extractor, headers map[string][]string, remoteAddr string, want netip.Addr) {
+func benchmarkExtractHeaders(b *testing.B, ex *ip.Extractor, headers map[string][]string, remoteAddr string, want netip.Addr) {
 	b.ReportAllocs()
 	for b.Loop() {
 		got, err := ex.ExtractFrom(headers, remoteAddr)

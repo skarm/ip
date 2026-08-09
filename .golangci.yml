@@ -1,0 +1,106 @@
+version: "2"
+run:
+  issues-exit-code: 1
+  relative-path-mode: gomod
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+      colors: true
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bodyclose
+    - canonicalheader
+    - dogsled
+    - errcheck
+    - errorlint
+    - forcetypeassert
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - goprintffuncname
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - perfsprint
+    - prealloc
+    - predeclared
+    - protogetter
+    - revive
+    - sqlclosecheck
+    - staticcheck
+    - testpackage
+    - tparallel
+    - unconvert
+    - unparam
+    - whitespace
+    - wsl_v5
+  settings:
+    gocognit:
+      min-complexity: 40
+    goconst:
+      min-occurrences: 4
+      ignore-tests: true
+    gocyclo:
+      min-complexity: 30
+    godot:
+      scope: declarations
+      capital: false
+    predeclared:
+      qualified-name: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - dupl
+          - err113
+          - errcheck
+          - funlen
+          - gochecknoglobals
+          - gocognit
+          - goconst
+          - gocyclo
+          - godot
+          - gosec
+          - wsl_v5
+        path: _test\.go
+      - linters:
+          - gosec
+        text: Errors unhandled
+      - linters:
+          - lll
+        source: '^//go:generate '
+    paths:
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/skarm/ip
+  exclusions:
+    generated: lax
+    paths:
+      - examples$
+      - _test\.go

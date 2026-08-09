@@ -1,0 +1,171 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - "v*"
+      - "grpc/v*"
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+  GOWORK: "off"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.25.0"
+          check-latest: false
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            grpc/go.sum
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+          install-only: true
+      - name: Lint root module
+        run: golangci-lint run -v --config .golangci.yml ./...
+      - name: Lint gRPC module
+        working-directory: grpc
+        run: golangci-lint run -v --config ../.golangci.yml ./...
+
+  root:
+    name: Root module
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.25.0"
+          check-latest: false
+          cache: true
+          cache-dependency-path: go.mod
+      - name: Check formatting
+        run: |
+          files="$(gofmt -l .)"
+          if [[ -n "$files" ]]; then
+            printf 'Files need gofmt:\n%s\n' "$files"
+            exit 1
+          fi
+      - name: Check module files
+        run: |
+          go mod tidy -diff
+          go mod verify
+      - name: Test with coverage
+        run: |
+          go test -count=1 -covermode=atomic -coverprofile=coverage.out ./...
+          coverage="$(go tool cover -func=coverage.out | awk '/^total:/ { sub(/%$/, "", $3); print $3 }')"
+          awk -v coverage="$coverage" 'BEGIN { printf "root coverage: %.1f%% (minimum 98.0%%)\n", coverage; exit !(coverage >= 98.0) }'
+      - name: Race detector
+        run: go test -count=1 -race ./...
+      - name: Vet
+        run: go vet ./...
+
+  grpc:
+    name: gRPC module
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: grpc
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.25.0"
+          check-latest: false
+          cache: true
+          cache-dependency-path: grpc/go.sum
+      - name: Check module files
+        run: |
+          go mod tidy -diff
+          go mod verify
+      - name: Test with coverage
+        run: |
+          go test -count=1 -covermode=atomic -coverprofile=coverage.out ./...
+          coverage="$(go tool cover -func=coverage.out | awk '/^total:/ { sub(/%$/, "", $3); print $3 }')"
+          awk -v coverage="$coverage" 'BEGIN { printf "gRPC coverage: %.1f%% (minimum 100.0%%)\n", coverage; exit !(coverage >= 100.0) }'
+      - name: Race detector
+        run: go test -count=1 -race ./...
+      - name: Vet
+        run: go vet ./...
+
+  fuzz-smoke:
+    name: Fuzz (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - FuzzParseForwarded
+          - FuzzParseXForwardedFor
+          - FuzzUnknownXForwardedForHopIsTrustBoundary
+          - FuzzForwardedElementWithoutForIsTrustBoundary
+          - FuzzEmptyXForwardedForElementIsTrustBoundary
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.25.0"
+          check-latest: false
+          cache: true
+          cache-dependency-path: go.mod
+      - name: Run fuzz target
+        run: go test -run='^$' -fuzz='^${{ matrix.target }}$' -fuzztime=10s .
+
+  govulncheck:
+    name: govulncheck (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: root
+            work-dir: .
+            cache-dependency-path: go.mod
+          - name: grpc
+            work-dir: grpc
+            cache-dependency-path: grpc/go.sum
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      # govulncheck evaluates standard-library vulnerabilities using the active
+      # toolchain, so scan with the patched release of the Go 1.25 line.
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.25.12"
+          check-latest: false
+          cache: true
+          cache-dependency-path: ${{ matrix.cache-dependency-path }}
+      - name: Run govulncheck
+        working-directory: ${{ matrix.work-dir }}
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
