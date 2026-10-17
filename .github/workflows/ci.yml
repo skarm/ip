@@ -26,12 +26,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25.0"
+          go-version: "1.26.9"
           check-latest: false
           cache: true
           cache-dependency-path: |
@@ -40,7 +40,7 @@ jobs:
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.12.2
+          version: v2.15.0
           install-only: true
       - name: Lint root module
         run: golangci-lint run -v --config .golangci.yml ./...
@@ -49,17 +49,21 @@ jobs:
         run: golangci-lint run -v --config ../.golangci.yml ./...
 
   root:
-    name: Root module
+    name: Root module (Go ${{ matrix.go-version }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.26.x", "1.27.x"]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25.0"
-          check-latest: false
+          go-version: ${{ matrix.go-version }}
+          check-latest: true
           cache: true
           cache-dependency-path: go.mod
       - name: Check formatting
@@ -84,20 +88,24 @@ jobs:
         run: go vet ./...
 
   grpc:
-    name: gRPC module
+    name: gRPC module (Go ${{ matrix.go-version }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.26.x", "1.27.x"]
     defaults:
       run:
         working-directory: grpc
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25.0"
-          check-latest: false
+          go-version: ${{ matrix.go-version }}
+          check-latest: true
           cache: true
           cache-dependency-path: grpc/go.sum
       - name: Check module files
@@ -128,12 +136,12 @@ jobs:
           - FuzzForwardedElementWithoutForIsTrustBoundary
           - FuzzEmptyXForwardedForElementIsTrustBoundary
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25.0"
+          go-version: "1.26.9"
           check-latest: false
           cache: true
           cache-dependency-path: go.mod
@@ -155,17 +163,17 @@ jobs:
             work-dir: grpc
             cache-dependency-path: grpc/go.sum
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # govulncheck evaluates standard-library vulnerabilities using the active
-      # toolchain, so scan with the patched release of the Go 1.25 line.
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      # Scan with a supported, patched toolchain. Module jobs test both
+      # supported Go release lines.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25.12"
+          go-version: "1.26.9"
           check-latest: false
           cache: true
           cache-dependency-path: ${{ matrix.cache-dependency-path }}
       - name: Run govulncheck
         working-directory: ${{ matrix.work-dir }}
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
