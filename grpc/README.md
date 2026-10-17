@@ -93,16 +93,15 @@ Configure the receiver explicitly:
 extractor := ip.Must(ip.New(
     ip.WithStrict(),
     ip.WithTrustedProxies("10.0.0.0/8"),
-    ip.WithHeaders(grpcip.OriginalClientIP),
+    ip.WithHeaderSpecs(ip.HeaderSpec{
+        Name: grpcip.OriginalClientIP,
+        Kind: ip.HeaderSingleIP,
+    }),
 ))
 ```
 
-This compatibility form compiles against the minimum root module version in
-`grpc/go.mod`; an unknown name passed to `WithHeaders` uses the single-IP
-parser. After the gRPC module requires a root release that provides typed
-header specifications, prefer the explicit equivalent
-`WithHeaderSpecs(ip.HeaderSpec{Name: grpcip.OriginalClientIP, Kind:
-ip.HeaderSingleIP})`.
+`WithHeaderSpecs` explicitly selects the single-IP parser for the dedicated
+metadata key. The required root module version supports this configuration.
 
 The dedicated metadata value is still only an assertion made by the calling
 service. It is trustworthy only when:

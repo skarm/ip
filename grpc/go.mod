@@ -3,7 +3,7 @@ module github.com/skarm/ip/grpc
 go 1.26.0
 
 require (
-	github.com/skarm/ip v0.3.0
+	github.com/skarm/ip v0.5.0
 	google.golang.org/grpc v1.83.2
 )
 
