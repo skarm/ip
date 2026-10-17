@@ -136,7 +136,12 @@ func (e *Extractor) extractWithTrustedHeaderMap(headers map[string][]string, rem
 
 	if !found {
 		if remoteAddr.IsValid() {
-			return remoteResult(remoteAddr, ReasonNoProxyHeaders), nil
+			result := remoteResult(remoteAddr, ReasonNoProxyHeaders)
+			if e.proxyMode == ProxiesAllowedList {
+				result.TrustedHops = 1
+			}
+
+			return result, nil
 		}
 
 		return Result{}, ErrNoIP

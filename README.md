@@ -103,7 +103,7 @@ rate-limits, fraud controls, or audit records.
 
 ## Requirements
 
-The root module supports Go 1.25.0 and newer.
+The root module supports Go 1.26.0 and newer.
 
 The optional `github.com/skarm/ip/grpc` submodule has its own dependencies and
 Go version; see [`grpc/README.md`](grpc/README.md).

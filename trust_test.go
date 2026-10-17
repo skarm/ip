@@ -265,3 +265,38 @@ func TestStrictUnknownSingleIPHeaderIsRejected(t *testing.T) {
 		t.Fatalf("ExtractResultFrom() error = %v, want ErrUnverifiableChain", err)
 	}
 }
+
+func TestStrictRejectsUnverifiableHopsBeforeSelectedClient(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		header string
+		value  string
+	}{
+		{name: "XFF unknown", header: ip.XForwardedFor, value: "unknown, 198.51.100.7, 10.0.0.1"},
+		{name: "Forwarded unknown", header: ip.Forwarded, value: "for=unknown, for=198.51.100.7, for=10.0.0.1"},
+		{name: "Forwarded obfuscated", header: ip.Forwarded, value: "for=_hidden, for=198.51.100.7, for=10.0.0.1"},
+		{name: "Forwarded missing for", header: ip.Forwarded, value: "by=203.0.113.9, for=198.51.100.7, for=10.0.0.1"},
+		{name: "Forwarded empty element", header: ip.Forwarded, value: ", for=198.51.100.7, for=10.0.0.1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			headers := map[string][]string{tt.header: {tt.value}}
+			strict := mustExtractor(t, ip.WithStrict(), ip.WithTrustedProxies("10.0.0.1", "10.0.0.2"))
+			addr, err := strict.ExtractFrom(headers, "10.0.0.2:443")
+			if !errors.Is(err, ip.ErrUnverifiableChain) || addr.IsValid() {
+				t.Fatalf("strict extraction = (%v, %v), want invalid address and ErrUnverifiableChain", addr, err)
+			}
+
+			permissive := mustExtractor(t, ip.WithTrustedProxies("10.0.0.1", "10.0.0.2"))
+			result, err := permissive.ExtractResultFrom(headers, "10.0.0.2:443")
+			if err != nil || result.Addr.String() != "198.51.100.7" || result.TrustedHops != 2 {
+				t.Fatalf("permissive extraction = (%+v, %v), want selected client and two trusted hops", result, err)
+			}
+		})
+	}
+}

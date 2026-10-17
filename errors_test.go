@@ -125,3 +125,24 @@ func TestUntrustedErrorValuesAreBounded(t *testing.T) {
 		})
 	}
 }
+
+func TestRemoteAddressErrorTextIsBounded(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{strings.Repeat("x", 4096), "1.2.3." + strings.Repeat("x", 4096)} {
+		for _, opts := range [][]ip.Option{nil, {ip.WithTrustedProxies("10.0.0.2")}, {ip.WithUnsafeTrustAllProxies()}} {
+			ex := mustExtractor(t, opts...)
+			_, err := ex.ExtractFrom(nil, value)
+			if !errors.Is(err, ip.ErrInvalidRemoteAddr) {
+				t.Fatalf("error = %v, want ErrInvalidRemoteAddr", err)
+			}
+			if got := len(err.Error()); got > 400 {
+				t.Errorf("ExtractFrom error text has %d bytes, want <= 400", got)
+			}
+			_, err = ex.ExtractResultFrom(nil, value)
+			if err == nil || len(err.Error()) > 400 {
+				t.Errorf("ExtractResultFrom error text is missing or exceeds 400 bytes")
+			}
+		}
+	}
+}

@@ -126,6 +126,40 @@ func TestExtractResultFromRejectsInvalidRemoteAddress(t *testing.T) {
 	}
 }
 
+func TestTrustedPeerWithoutProxyHeadersIsCounted(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		opts    []ip.Option
+		headers map[string][]string
+	}{
+		{name: "nil headers"},
+		{name: "unconfigured header", headers: map[string][]string{"x-other": {"value"}}},
+		{name: "empty configured values", headers: map[string][]string{ip.Forwarded: nil}},
+		{name: "disabled headers", opts: []ip.Option{ip.WithHeaders()}, headers: map[string][]string{ip.XForwardedFor: {"198.51.100.10"}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := append([]ip.Option{ip.WithTrustedProxies("10.0.0.2")}, tt.opts...)
+			ex := mustExtractor(t, opts...)
+			result, err := ex.ExtractResultFrom(tt.headers, "10.0.0.2:443")
+			want := ip.Result{
+				Addr:        netip.MustParseAddr("10.0.0.2"),
+				Source:      ip.SourceRemoteAddr,
+				Reason:      ip.ReasonNoProxyHeaders,
+				TrustedHops: 1,
+			}
+			if err != nil || result != want {
+				t.Fatalf("ExtractResultFrom() = (%+v, %v), want (%+v, nil)", result, err, want)
+			}
+		})
+	}
+}
+
 func TestExtractResultFromSupportsMoreThanInlineHeaderCount(t *testing.T) {
 	const headerCount = 17
 

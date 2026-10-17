@@ -42,20 +42,26 @@ func (e *Extractor) clientFromProxyChain(header string, nodes []proxyNode, remot
 		return Result{}, false, nil
 	}
 
+	if e.strict {
+		// Strict validation covers the entire header, including elements to
+		// the left of the first untrusted address selected during traversal.
+		for _, node := range nodes {
+			if node.kind != proxyNodeIP || !node.addr.IsValid() {
+				err := node.err
+				if err == nil {
+					err = ErrUnverifiableChain
+				}
+
+				return Result{}, false, &HeaderError{Header: header, Value: formatHeaderValue(node.raw), Err: err}
+			}
+		}
+	}
+
 	if e.proxyMode == ProxiesAllowedAll {
 		var client netip.Addr
 
 		for _, node := range nodes {
 			if node.kind != proxyNodeIP || !node.addr.IsValid() {
-				if e.strict {
-					err := node.err
-					if err == nil {
-						err = ErrUnverifiableChain
-					}
-
-					return Result{}, false, &HeaderError{Header: header, Value: formatHeaderValue(node.raw), Err: err}
-				}
-
 				continue
 			}
 
@@ -74,17 +80,8 @@ func (e *Extractor) clientFromProxyChain(header string, nodes []proxyNode, remot
 	// The caller verified the immediate transport peer before this method.
 	trustedHops := 1
 
-	for i := len(nodes) - 1; i >= 0; i-- {
-		if nodes[i].kind != proxyNodeIP || !nodes[i].addr.IsValid() {
-			if e.strict {
-				err := nodes[i].err
-				if err == nil {
-					err = ErrUnverifiableChain
-				}
-
-				return Result{}, false, &HeaderError{Header: header, Value: formatHeaderValue(nodes[i].raw), Err: err}
-			}
-
+	for _, node := range slices.Backward(nodes) {
+		if node.kind != proxyNodeIP || !node.addr.IsValid() {
 			return Result{
 				Addr:        remoteAddr,
 				Source:      SourceRemoteAddr,
@@ -94,9 +91,9 @@ func (e *Extractor) clientFromProxyChain(header string, nodes []proxyNode, remot
 			}, true, nil
 		}
 
-		if !e.isTrusted(nodes[i].addr) {
+		if !e.isTrusted(node.addr) {
 			return Result{
-				Addr:        nodes[i].addr,
+				Addr:        node.addr,
 				Source:      SourceProxyHeader,
 				Header:      header,
 				TrustedHops: trustedHops,

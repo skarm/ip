@@ -121,11 +121,25 @@ func (e *ConfigError) Unwrap() error {
 	return e.Err
 }
 
+// remoteAddrError retains the parser cause for unwrapping without repeating
+// its unbounded input in the formatted error.
+type remoteAddrError struct {
+	cause error
+}
+
+func (e *remoteAddrError) Error() string {
+	return ErrInvalidRemoteAddr.Error()
+}
+
+func (e *remoteAddrError) Unwrap() error {
+	return e.cause
+}
+
 func wrapRemoteAddrError(value string, err error) error {
 	return &HeaderError{
 		Header: "RemoteAddr",
 		Value:  formatHeaderValue(value),
-		Err:    errors.Join(ErrInvalidRemoteAddr, err),
+		Err:    &remoteAddrError{cause: errors.Join(ErrInvalidRemoteAddr, err)},
 	}
 }
 
